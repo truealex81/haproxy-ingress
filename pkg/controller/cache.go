@@ -17,11 +17,17 @@ limitations under the License.
 package controller
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"strings"
 
 	api "k8s.io/api/core/v1"
 
+	"github.com/jcmoraisjr/haproxy-ingress/pkg/acme"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/common/file"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/common/ingress"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/common/ingress/controller"
@@ -32,12 +38,18 @@ import (
 type cache struct {
 	listers    *ingress.StoreLister
 	controller *controller.GenericController
+	//
+	acmeSecretKeyName      string
+	acmeTokenConfigmapName string
 }
 
 func newCache(listers *ingress.StoreLister, controller *controller.GenericController) *cache {
 	return &cache{
 		listers:    listers,
 		controller: controller,
+		// TODO parameterize object names and namespace
+		acmeSecretKeyName:      "ingress-controller/acme-private-key",
+		acmeTokenConfigmapName: "ingress-controller/acme-validation-tokens",
 	}
 }
 
@@ -128,4 +140,117 @@ func (c *cache) GetSecretContent(secretName, keyName string) ([]byte, error) {
 		return nil, fmt.Errorf("secret '%s' does not have key '%s'", secretName, keyName)
 	}
 	return data, nil
+}
+
+// Implements acme.ClientResolver
+func (c *cache) GetKey() (crypto.Signer, error) {
+	secret, err := c.listers.Secret.GetByName(c.acmeSecretKeyName)
+	var key *rsa.PrivateKey
+	if err == nil {
+		pemKey, found := secret.Data[api.TLSPrivateKeyKey]
+		if !found {
+			return nil, fmt.Errorf("secret '%s' does not have a key", c.acmeSecretKeyName)
+		}
+		derBlock, _ := pem.Decode(pemKey)
+		if derBlock == nil {
+			return nil, fmt.Errorf("secret '%s' has not a valid pem encoded private key", c.acmeSecretKeyName)
+		}
+		key, err = x509.ParsePKCS1PrivateKey(derBlock.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing acme client private key: %v", err)
+		}
+	}
+	if key == nil {
+		key, err = rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return nil, err
+		}
+		pemEncode := pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(key),
+		})
+		secretName := strings.Split(c.acmeSecretKeyName, "/")
+		newSecret := &api.Secret{}
+		newSecret.Namespace = secretName[0]
+		newSecret.Name = secretName[1]
+		newSecret.Data = map[string][]byte{api.TLSPrivateKeyKey: pemEncode}
+		if err := c.listers.Secret.CreateOrUpdate(newSecret); err != nil {
+			return nil, err
+		}
+	}
+	return key, nil
+}
+
+// Implements acme.SignerResolver
+func (c *cache) GetTLSSecretContent(secretName string) *acme.TLSSecret {
+	secret, err := c.listers.Secret.GetByName(secretName)
+	if err != nil {
+		return nil
+	}
+	pemCrt, foundCrt := secret.Data[api.TLSCertKey]
+	pemKey, foundKey := secret.Data[api.TLSPrivateKeyKey]
+	if !foundCrt || !foundKey {
+		return nil
+	}
+	derCrt, _ := pem.Decode(pemCrt)
+	derKey, _ := pem.Decode(pemKey)
+	if derCrt == nil || derKey == nil {
+		return nil
+	}
+	crt, errCrt := x509.ParseCertificate(derCrt.Bytes)
+	key, errKey := x509.ParsePKCS1PrivateKey(derKey.Bytes)
+	if errCrt != nil || errKey != nil {
+		return nil
+	}
+	return &acme.TLSSecret{
+		Crt: crt,
+		Key: key,
+	}
+}
+
+// Implements acme.SignerResolver
+func (c *cache) SetTLSSecretContent(secretName string, pemCrt, pemKey []byte) error {
+	name := strings.Split(secretName, "/")
+	secret := &api.Secret{}
+	secret.Namespace = name[0]
+	secret.Name = name[1]
+	secret.Type = api.SecretTypeTLS
+	secret.Data = map[string][]byte{
+		api.TLSCertKey:       pemCrt,
+		api.TLSPrivateKeyKey: pemKey,
+	}
+	return c.listers.Secret.CreateOrUpdate(secret)
+}
+
+// Implements acme.ServerResolver
+func (c *cache) GetToken(domain, uri string) string {
+	config, err := c.listers.ConfigMap.GetByName(c.acmeTokenConfigmapName)
+	if err != nil {
+		return ""
+	}
+	data, found := config.Data[domain]
+	if !found {
+		return ""
+	}
+	prefix := uri + "="
+	if !strings.HasPrefix(data, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(data, prefix)
+}
+
+// Implements acme.ClientResolver
+func (c *cache) SetToken(domain string, uri, token string) error {
+	config, err := c.listers.ConfigMap.GetByName(c.acmeTokenConfigmapName)
+	if err != nil {
+		configName := strings.Split(c.acmeTokenConfigmapName, "/")
+		config = &api.ConfigMap{}
+		config.Namespace = configName[0]
+		config.Name = configName[1]
+	}
+	if config.Data == nil {
+		config.Data = make(map[string]string, 1)
+	}
+	config.Data[domain] = uri + "=" + token
+	return c.listers.ConfigMap.CreateOrUpdate(config)
 }

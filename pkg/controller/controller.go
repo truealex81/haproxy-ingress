@@ -30,6 +30,7 @@ import (
 	api "k8s.io/api/core/v1"
 	extensions "k8s.io/api/extensions/v1beta1"
 
+	"github.com/jcmoraisjr/haproxy-ingress/pkg/acme"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/common/ingress"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/common/ingress/annotations/class"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/common/ingress/controller"
@@ -49,7 +50,8 @@ import (
 type HAProxyController struct {
 	instance          haproxy.Instance
 	logger            types.Logger
-	cache             convtypes.Cache
+	cache             *cache
+	acmeSigner        acme.Signer
 	updateCount       int
 	controller        *controller.GenericController
 	cfg               *controller.Configuration
@@ -105,6 +107,7 @@ func (hc *HAProxyController) configController() {
 	// starting v0.8 only config
 	hc.logger = &logger{depth: 1}
 	hc.cache = newCache(hc.storeLister, hc.controller)
+	hc.acmeSigner = acme.NewSigner(hc.logger, "/var/run/acme.sock", hc.cache)
 	instanceOptions := haproxy.InstanceOptions{
 		HAProxyCmd:        "haproxy",
 		ReloadCmd:         "/haproxy-reload.sh",
@@ -120,6 +123,7 @@ func (hc *HAProxyController) configController() {
 	hc.converterOptions = &ingtypes.ConverterOptions{
 		Logger:           hc.logger,
 		Cache:            hc.cache,
+		AcmeSigner:       hc.acmeSigner,
 		AnnotationPrefix: hc.cfg.AnnPrefix,
 		DefaultBackend:   hc.cfg.DefaultService,
 		DefaultSSLFile:   hc.createDefaultSSLFile(hc.cache),

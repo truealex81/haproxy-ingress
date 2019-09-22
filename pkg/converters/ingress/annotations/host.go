@@ -39,6 +39,22 @@ func (c *updater) buildHostAuthTLS(d *hostData) {
 	}
 }
 
+func (c *updater) buildHostCertSigner(d *hostData) {
+	signer := d.mapper.Get(ingtypes.HostCertSigner)
+	if signer.Value == "" {
+		return
+	}
+	if signer.Value != "acme" {
+		c.logger.Warn("ignoring invalid cert-signer on %v: %s", signer.Source, signer.Value)
+		return
+	}
+	if !c.acme.HasAccount() {
+		c.logger.Warn("ignoring acme signer on %v due to missing endpoint or email config", signer.Source)
+		return
+	}
+	// just warnings, ingress.syncIngress() has already added this
+}
+
 func (c *updater) buildHostSSLPassthrough(d *hostData) {
 	sslpassthrough := d.mapper.Get(ingtypes.HostSSLPassthrough)
 	if !sslpassthrough.Bool() {

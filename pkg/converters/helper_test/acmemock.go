@@ -14,21 +14,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package types
+package helper_test
 
 import (
-	"github.com/jcmoraisjr/haproxy-ingress/pkg/acme"
-	convtypes "github.com/jcmoraisjr/haproxy-ingress/pkg/converters/types"
-	"github.com/jcmoraisjr/haproxy-ingress/pkg/types"
+	"time"
 )
 
-// ConverterOptions ...
-type ConverterOptions struct {
-	Logger           types.Logger
-	Cache            convtypes.Cache
-	AcmeSigner       acme.Signer
-	DefaultConfig    func() map[string]string
-	DefaultBackend   string
-	DefaultSSLFile   convtypes.File
-	AnnotationPrefix string
+// AcmeMock ...
+type AcmeMock struct{}
+
+// AcmeAccount ...
+func (m *AcmeMock) AcmeAccount(endpoint, emails string) {
+}
+
+// AddHosts ...
+func (m *AcmeMock) AddHosts(hosts []string, secret string) {
+}
+
+// ClearHosts ...
+func (m *AcmeMock) ClearHosts() {
+}
+
+// HasAccount ...
+func (m *AcmeMock) HasAccount() bool {
+	return false
+}
+
+// Verify ...
+func (m *AcmeMock) Verify(interval time.Duration) {
 }

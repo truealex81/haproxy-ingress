@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/scheme"
 
+	"github.com/jcmoraisjr/haproxy-ingress/pkg/acme"
 	conv_helper "github.com/jcmoraisjr/haproxy-ingress/pkg/converters/helper_test"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/converters/ingress/annotations"
 	ingtypes "github.com/jcmoraisjr/haproxy-ingress/pkg/converters/ingress/types"
@@ -1116,22 +1117,24 @@ WARN skipping http port config of ssl-passthrough on ingress 'default/echo2': po
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 type testConfig struct {
-	t       *testing.T
-	decode  func(data []byte, defaults *schema.GroupVersionKind, into runtime.Object) (runtime.Object, *schema.GroupVersionKind, error)
-	hconfig haproxy.Config
-	logger  *types_helper.LoggerMock
-	cache   *conv_helper.CacheMock
-	updater *updaterMock
+	t          *testing.T
+	decode     func(data []byte, defaults *schema.GroupVersionKind, into runtime.Object) (runtime.Object, *schema.GroupVersionKind, error)
+	hconfig    haproxy.Config
+	acmeSigner acme.Signer
+	logger     *types_helper.LoggerMock
+	cache      *conv_helper.CacheMock
+	updater    *updaterMock
 }
 
 func setup(t *testing.T) *testConfig {
 	logger := types_helper.NewLoggerMock(t)
 	c := &testConfig{
-		t:       t,
-		decode:  scheme.Codecs.UniversalDeserializer().Decode,
-		hconfig: haproxy.CreateInstance(logger, haproxy.InstanceOptions{}).Config(),
-		cache:   conv_helper.NewCacheMock(),
-		logger:  logger,
+		t:          t,
+		decode:     scheme.Codecs.UniversalDeserializer().Decode,
+		hconfig:    haproxy.CreateInstance(logger, haproxy.InstanceOptions{}).Config(),
+		acmeSigner: &conv_helper.AcmeMock{},
+		cache:      conv_helper.NewCacheMock(),
+		logger:     logger,
 	}
 	c.createSvc1("system/default", "8080", "172.17.0.99")
 	return c
@@ -1159,6 +1162,7 @@ func (c *testConfig) SyncDef(config map[string]string, ing ...*extensions.Ingres
 		&ingtypes.ConverterOptions{
 			Cache:          c.cache,
 			Logger:         c.logger,
+			AcmeSigner:     c.acmeSigner,
 			DefaultConfig:  defaultConfig,
 			DefaultBackend: "system/default",
 			DefaultSSLFile: convtypes.File{

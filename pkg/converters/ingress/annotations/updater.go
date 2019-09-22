@@ -20,6 +20,7 @@ import (
 	"net"
 	"regexp"
 
+	"github.com/jcmoraisjr/haproxy-ingress/pkg/acme"
 	ingtypes "github.com/jcmoraisjr/haproxy-ingress/pkg/converters/ingress/types"
 	convtypes "github.com/jcmoraisjr/haproxy-ingress/pkg/converters/types"
 	"github.com/jcmoraisjr/haproxy-ingress/pkg/haproxy"
@@ -36,18 +37,20 @@ type Updater interface {
 }
 
 // NewUpdater ...
-func NewUpdater(haproxy haproxy.Config, cache convtypes.Cache, logger types.Logger) Updater {
+func NewUpdater(haproxy haproxy.Config, options *ingtypes.ConverterOptions) Updater {
 	return &updater{
 		haproxy: haproxy,
-		cache:   cache,
-		logger:  logger,
+		logger:  options.Logger,
+		cache:   options.Cache,
+		acme:    options.AcmeSigner,
 	}
 }
 
 type updater struct {
 	haproxy haproxy.Config
-	cache   convtypes.Cache
 	logger  types.Logger
+	cache   convtypes.Cache
+	acme    acme.Signer
 }
 
 type globalData struct {
@@ -110,6 +113,7 @@ func (c *updater) UpdateGlobalConfig(global *hatypes.Global, mapper *Mapper) {
 	global.StrictHost = mapper.Get(ingtypes.GlobalStrictHost).Bool()
 	global.UseHTX = mapper.Get(ingtypes.GlobalUseHTX).Bool()
 	c.buildGlobalBind(data)
+	c.buildGlobalCertSigner(data)
 	c.buildGlobalCustomConfig(data)
 	c.buildGlobalDNS(data)
 	c.buildGlobalForwardFor(data)
@@ -133,6 +137,7 @@ func (c *updater) UpdateHostConfig(host *hatypes.Host, mapper *Mapper) {
 	host.Alias.AliasRegex = mapper.Get(ingtypes.HostServerAliasRegex).Value
 	host.VarNamespace = mapper.Get(ingtypes.HostVarNamespace).Bool()
 	c.buildHostAuthTLS(data)
+	c.buildHostCertSigner(data)
 	c.buildHostSSLPassthrough(data)
 	c.buildHostTimeout(data)
 }

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	api "k8s.io/api/core/v1"
 	extensions "k8s.io/api/extensions/v1beta1"
@@ -54,7 +55,7 @@ func NewIngressConverter(options *ingtypes.ConverterOptions, haproxy haproxy.Con
 		logger:             options.Logger,
 		cache:              options.Cache,
 		mapBuilder:         annotations.NewMapBuilder(options.Logger, options.AnnotationPrefix+"/", defaultConfig),
-		updater:            annotations.NewUpdater(haproxy, options.Cache, options.Logger),
+		updater:            annotations.NewUpdater(haproxy, options),
 		globalConfig:       annotations.NewMapBuilder(options.Logger, "", defaultConfig).NewMapper(),
 		hostAnnotations:    map[*hatypes.Host]*annotations.Mapper{},
 		backendAnnotations: map[*hatypes.Backend]*annotations.Mapper{},
@@ -83,10 +84,13 @@ type converter struct {
 }
 
 func (c *converter) Sync(ingress []*extensions.Ingress) {
+	c.options.AcmeSigner.ClearHosts()
 	for _, ing := range ingress {
 		c.syncIngress(ing)
 	}
 	c.syncAnnotations()
+	// TODO parameterize check interval
+	c.options.AcmeSigner.Verify(24 * time.Hour)
 }
 
 func (c *converter) syncIngress(ing *extensions.Ingress) {
@@ -154,6 +158,15 @@ func (c *converter) syncIngress(ing *extensions.Ingress) {
 						}
 					}
 				}
+			}
+		}
+	}
+	for _, tls := range ing.Spec.TLS {
+		if annHost[ingtypes.HostCertSigner] == "acme" {
+			if tls.SecretName != "" {
+				c.options.AcmeSigner.AddHosts(tls.Hosts, ing.Namespace+"/"+tls.SecretName)
+			} else {
+				c.logger.Warn("skipping cert signer of ingress '%s': missing secret name", fullIngName)
 			}
 		}
 	}

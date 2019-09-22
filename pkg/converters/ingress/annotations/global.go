@@ -35,6 +35,13 @@ func (c *updater) buildGlobalBind(d *globalData) {
 	d.global.Bind.HTTPSPort = d.mapper.Get(ingtypes.GlobalHTTPSPort).Int()
 }
 
+func (c *updater) buildGlobalCertSigner(d *globalData) {
+	if endpoint := d.mapper.Get(ingtypes.GlobalAcmeEndpoint).Value; endpoint != "" {
+		emails := d.mapper.Get(ingtypes.GlobalAcmeEmails).Value
+		c.acme.AcmeAccount(endpoint, emails)
+	}
+}
+
 func (c *updater) buildGlobalProc(d *globalData) {
 	balance := d.mapper.Get(ingtypes.GlobalNbprocBalance).Int()
 	if balance < 1 {
