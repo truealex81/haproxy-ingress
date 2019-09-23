@@ -521,6 +521,17 @@ backend {{ $backend.ID }}
     {{- end }}
 {{- end }}
 
+{{- if $global.Acme.Enabled }}
+
+  # # # # # # # # # # # # # # # # # # #
+# #
+#     acme challenge server
+#
+backend _acme_challenge
+    mode http
+    server _acme_server unix@{{ $global.Acme.Socket }}
+{{- end }}
+
 {{- if $cfg.Backends }}
 
   # # # # # # # # # # # # # # # # # # #
@@ -652,17 +663,29 @@ frontend _front_http
 {{- end }}
 
 {{- /*------------------------------------*/}}
+{{- if $global.Acme.Enabled }}
+    acl acme-challenge path_beg {{ $global.Acme.Prefix }}
+{{- end }}
+
+{{- /*------------------------------------*/}}
     http-request set-var(req.base) base,regsub(:[0-9]+/,/)
 
 {{- /*------------------------------------*/}}
+{{- $acmeexclusive := and $global.Acme.Enabled (not $global.Acme.Shared) }}
 {{- if $fgroup.HTTPSRedirMap.HasRegex }}
     http-request set-var(req.redir)
         {{- "" }} var(req.base),map_beg({{ $fgroup.HTTPSRedirMap.MatchFile }},_nomatch)
-    http-request redirect scheme https if { var(req.redir) yes }
-    http-request redirect scheme https if { var(req.redir) _nomatch }
+    http-request redirect scheme https
+        {{- "" }} if{{- if $acmeexclusive }} !acme-challenge{{ end }}
+        {{- "" }} { var(req.redir) yes }
+    http-request redirect scheme https
+        {{- "" }} if{{- if $acmeexclusive }} !acme-challenge{{ end }}
+        {{- "" }} { var(req.redir) _nomatch }
         {{- "" }} { var(req.base),map_reg({{ $fgroup.HTTPSRedirMap.RegexFile }},_nomatch) yes }
 {{- else }}
-    http-request redirect scheme https if { var(req.base),map_beg({{ $fgroup.HTTPSRedirMap.MatchFile }},_nomatch) yes }
+    http-request redirect scheme https
+        {{- "" }} if{{- if $acmeexclusive }} !acme-challenge{{ end }}
+        {{- "" }} { var(req.base),map_beg({{ $fgroup.HTTPSRedirMap.MatchFile }},_nomatch) yes }
 {{- end }}
 
 {{- /*------------------------------------*/}}
@@ -674,7 +697,9 @@ frontend _front_http
     http-request set-var(req.rootredir)
         {{- "" }} var(req.host),map_reg({{ $fgroup.HTTPRootRedirMap.RegexFile }},_nomatch) if { var(req.rootredir) _nomatch }
 {{- end }}
-    http-request redirect location %[var(req.rootredir)] if { path / } !{ var(req.rootredir) _nomatch }
+    http-request redirect location %[var(req.rootredir)]
+        {{- "" }} if{{- if $acmeexclusive }} !acme-challenge{{ end }}
+        {{- "" }} { path / } !{ var(req.rootredir) _nomatch }
 {{- end }}
 
 {{- /*------------------------------------*/}}
@@ -691,7 +716,13 @@ frontend _front_http
         {{- "" }} var(req.base),map_reg({{ $fgroup.HTTPFrontsMap.RegexFile }},_nomatch)
         {{- "" }} if { var(req.backend) _nomatch }
 {{- end }}
+{{- if $acmeexclusive }}
+    use_backend _acme_challenge if acme-challenge
+{{- end }}
     use_backend %[var(req.backend)] unless { var(req.backend) _nomatch }
+{{- if and $global.Acme.Enabled $global.Acme.Shared }}
+    use_backend _acme_challenge if acme-challenge
+{{- end }}
 
 {{- template "defaultbackend" map $cfg }}
 

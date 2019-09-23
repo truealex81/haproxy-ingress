@@ -40,6 +40,11 @@ func (m *AcmeMock) HasAccount() bool {
 	return false
 }
 
+// Socket ...
+func (m *AcmeMock) Socket() string {
+	return ""
+}
+
 // Verify ...
 func (m *AcmeMock) Verify(interval time.Duration) {
 }

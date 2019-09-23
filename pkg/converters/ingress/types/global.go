@@ -20,6 +20,7 @@ package types
 const (
 	GlobalAcmeEmails                   = "acme-emails"
 	GlobalAcmeEndpoint                 = "acme-endpoint"
+	GlobalAcmeShared                   = "acme-shared"
 	GlobalBindIPAddrHealthz            = "bind-ip-addr-healthz"
 	GlobalBindIPAddrHTTP               = "bind-ip-addr-http"
 	GlobalBindIPAddrStats              = "bind-ip-addr-stats"

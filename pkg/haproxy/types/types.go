@@ -28,6 +28,7 @@ type Global struct {
 	ModSecurity     ModSecurityConfig
 	Cookie          CookieConfig
 	DrainSupport    DrainConfig
+	Acme            AcmeConfig
 	ForwardFor      string
 	LoadServerState bool
 	AdminSocket     string
@@ -135,6 +136,14 @@ type CookieConfig struct {
 type DrainConfig struct {
 	Drain      bool
 	Redispatch bool
+}
+
+// AcmeConfig ...
+type AcmeConfig struct {
+	Enabled bool
+	Prefix  string
+	Shared  bool
+	Socket  string
 }
 
 // HealthzConfig ...

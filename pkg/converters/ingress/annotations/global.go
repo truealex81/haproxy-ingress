@@ -39,6 +39,13 @@ func (c *updater) buildGlobalCertSigner(d *globalData) {
 	if endpoint := d.mapper.Get(ingtypes.GlobalAcmeEndpoint).Value; endpoint != "" {
 		emails := d.mapper.Get(ingtypes.GlobalAcmeEmails).Value
 		c.acme.AcmeAccount(endpoint, emails)
+		if c.acme.HasAccount() {
+			acme := &d.global.Acme
+			acme.Enabled = true
+			acme.Prefix = "/.well-known/acme-challenge/"
+			acme.Shared = d.mapper.Get(ingtypes.GlobalAcmeShared).Bool()
+			acme.Socket = c.acme.Socket()
+		}
 	}
 }
 

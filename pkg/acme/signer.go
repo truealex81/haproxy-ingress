@@ -48,6 +48,7 @@ type Signer interface {
 	AddHosts(hosts []string, secret string)
 	ClearHosts()
 	HasAccount() bool
+	Socket() string
 	Verify(interval time.Duration)
 }
 
@@ -114,6 +115,10 @@ func (s *signer) ClearHosts() {
 
 func (s *signer) HasAccount() bool {
 	return s.account.Endpoint != "" && s.account.Emails != ""
+}
+
+func (s *signer) Socket() string {
+	return s.socket
 }
 
 func (s *signer) Verify(interval time.Duration) {
