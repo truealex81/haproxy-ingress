@@ -26,6 +26,7 @@ global
 {{- end }}
     lua-load /usr/local/etc/haproxy/lua/send-response.lua
     lua-load /usr/local/etc/haproxy/lua/auth-request.lua
+    lua-load /usr/local/etc/haproxy/lua/jwtverify.lua
 {{- if ne $cfg.SSLDHParam.Filename "" }}
     # DH PEM checksum: {{ $cfg.SSLDHParam.PemSHA }}
     ssl-dh-param-file {{ $cfg.SSLDHParam.Filename }}
